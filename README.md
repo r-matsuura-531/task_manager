@@ -8,6 +8,6 @@ $ docker-compose up -d
 ```
 
 3. アプリケーションを起動してください。
-4. 以下のコマンドを実行してください。
+4. gradleでapplication.bootRunを実行
 
 5. URL：http://localhost:8080
