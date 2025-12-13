@@ -1,0 +1,183 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.4.1'
+    id 'io.spring.dependency-management' version '1.1.3'
+    id 'org.domaframework.doma.codegen' version '3.2.1'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = '17'
+
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    domaGenRuntime
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-mail'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'de.huxhorn.sulky:de.huxhorn.sulky.ulid:8.2.0'
+
+    runtimeOnly 'org.springframework.boot:spring-boot-devtools'
+    runtimeOnly 'mysql:mysql-connector-java:8.0.33'
+
+    compileOnly 'org.projectlombok:lombok:1.18.36'
+    annotationProcessor("org.projectlombok:lombok")
+
+    // mapstruct
+    def mapstructVersion = '1.5.3.Final'
+    implementation "org.mapstruct:mapstruct:${mapstructVersion}"
+    annotationProcessor "org.mapstruct:mapstruct-processor:${mapstructVersion}"
+    testAnnotationProcessor "org.mapstruct:mapstruct-processor:${mapstructVersion}"
+    annotationProcessor 'org.projectlombok:lombok-mapstruct-binding:0.2.0'
+
+    // Doma2
+    def domaVersion = '2.54.1'
+    implementation 'org.seasar.doma.boot:doma-spring-boot-starter:1.7.0'
+    implementation "org.seasar.doma:doma-core:${domaVersion}"
+    implementation "org.seasar.doma:doma-slf4j:${domaVersion}"
+    annotationProcessor "org.seasar.doma:doma-processor:${domaVersion}"
+
+    // doma-gen2 関連
+    domaGenRuntime 'org.seasar.doma:doma-gen:2.28.0'
+    domaGenRuntime('mysql:mysql-connector-java:8.0.32')
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'org.mockito:mockito-core:5.2.0'
+    testImplementation 'org.mockito:mockito-inline:5.2.0'
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir "src/main/java"
+        }
+        resources {
+            srcDir "src/main/resources"
+        }
+    }
+}
+
+//Doma-Gen用変数
+// SQL の既存配置（今まで通り）
+def sqlRootPath = "src/main/resources/META-INF/com/example/taskmanager/infrastructure"
+
+// package（Doma-Gen に渡すベース。テンプレで動的に package を変える場合でもダミーでOK）
+def basePackage = "com.example.taskmanager.infrastructure"
+
+// 生成先（変更点）
+def generatedEntityDir = file("doma-gen/generated/Entity")
+def generatedDaoDir    = file("doma-gen/generated/Dao")
+
+// 作業用ディレクトリ（バックアップ）
+def workDir = layout.buildDirectory.dir("doma-gen-work")
+def workDaoBackupDir = workDir.map { it.dir("before/dao") }
+def workSqlBackupDir = workDir.map { it.dir("before/sql") }
+
+// バックアップタスク（Dao・SQLのみ。Entityは上書きOKなので不要）
+tasks.register("backupDomaAssets") {
+    group = "doma-gen"
+    description = "Backup existing Dao and SQL before Doma-Gen."
+
+    doLast {
+        // 作業ディレクトリをクリーン
+        delete(workDir)
+
+        // Dao のバックアップ（generated/Dao から）
+        copy {
+            from(generatedDaoDir)
+            into(workDaoBackupDir.get().asFile)
+            include "**/*Dao.java"
+        }
+    }
+}
+
+// 生成タスク
+tasks.register("generateDomaArtifacts") {
+    group = "doma-gen"
+    description = "Generate Doma2 artifacts (Entity overwrite, Dao restore, SQL restore)."
+
+    dependsOn("backupDomaAssets")
+
+    doLast {
+        // DB接続情報（生成時にだけ読む）
+        def appProps = new Properties()
+        def propsFile = file("src/main/resources/application.properties")
+        if (propsFile.exists()) {
+            propsFile.withInputStream { appProps.load(it) }
+        }
+
+        def driverClassName = appProps.getProperty("spring.datasource.driver-class-name") ?: "com.mysql.cj.jdbc.Driver"
+        def dbSourceUrl     = appProps.getProperty("spring.datasource.url") ?: "jdbc:mysql://localhost:3307/taskmanager"
+        def dbUser          = appProps.getProperty("spring.datasource.username") ?: "user"
+        def dbPassword      = appProps.getProperty("spring.datasource.password") ?: "password"
+
+        // 対象テーブル（全テーブルなら ".*"）
+        def tableNamePattern = ".*"
+
+        ant.taskdef(
+                resource: 'domagentask.properties',
+                classpath: configurations.domaGenRuntime.asPath
+        )
+
+        ant.gen(
+                driverClassName: driverClassName,
+                url: dbSourceUrl,
+                user: dbUser,
+                password: dbPassword,
+                dialectName: 'mysql',
+                tableNamePattern: tableNamePattern,
+                templatePrimaryDir: "doma-gen/template"
+        ) {
+            // Entity：生成先だけ変更（上書きOK）
+            entityConfig(
+                    destDir: generatedEntityDir,
+                    overwrite: true,
+                    showDbComment: true,
+                    useListener: false,
+                    entityPropertyClassNamesFile: "domain_mapping.properties",
+                    packageName: basePackage
+            )
+
+            // Dao：生成先だけ変更（生成は上書き → 直後に復元で既存Daoを維持）
+            daoConfig(
+                    destDir: generatedDaoDir,
+                    overwrite: true,
+                    packageName: basePackage
+            )
+        }
+
+        // ===== 復元処理（今までと同じ挙動） =====
+
+        // Dao を復元（既存Daoを維持。新規Daoはバックアップに無いので残る）
+        copy {
+            from(workDaoBackupDir.get().asFile)
+            into(generatedDaoDir)
+            include "**/*Dao.java"
+        }
+
+        // 作業ディレクトリのクリーンアップ
+        delete(workDir)
+    }
+}
+
+// エイリアス
+tasks.register("domagen") {
+    group = "doma-gen"
+    description = "Backup and generate Doma2 artifacts."
+    dependsOn("generateDomaArtifacts")
+}
+
+//tasks.register("copyDomaResources", Copy) {
+//    from("src/main/resources/META-INF")
+//    into(layout.buildDirectory.dir("classes/java/main/META-INF"))
+//}
