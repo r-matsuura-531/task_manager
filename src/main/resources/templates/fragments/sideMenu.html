@@ -2,36 +2,23 @@
 <html lang="ja" xmlns:th="http://www.thymeleaf.org">
 <body>
 <th:block th:fragment="sideMenu(menus)">
-    <nav class="sidebar">
-        <div class="sidebar-header">
-            <h1>タスク管理</h1>
-        </div>
-        <ul class="sidebar-menu">
-            <li th:each="menu : ${menus.menuResponses}" th:id="'side-menu-' + ${menu.id}" th:data-menu-url="${menu.url}">
-                <a th:href="@{${menu.url}}" th:text="${menu.name}"></a>
-            </li>
-        </ul>
-    </nav>
-    <script>
-        function sideMenuCurrentPage() {
-            const sideBarMenu = document.querySelector('.sidebar-menu');
-            if (!sideBarMenu) {
-                return;
-            }
-
-            const sideMenu = sideBarMenu.querySelectorAll('li');
-            const currentPage = window.location.pathname;
-
-            sideMenu.forEach((menu) => {
-                if (menu.dataset.menuUrl === currentPage) {
-                    menu.classList.add('active');
-                }
-            })
-        }
-
-        window.addEventListener('DOMContentLoaded', () => {
-            sideMenuCurrentPage();
-        });
-    </script>
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <h1>タスク管理</h1>
+    </div>
+    <ul class="sidebar-menu">
+      <li th:each="menu : ${menus.menuResponses}"
+          th:id="'side-menu-' + ${menu.id}"
+          th:data-menu-url="${menu.url}">
+        <a th:href="@{${menu.url}}" class="menu-item" th:text="${menu.name}"></a>
+      </li>
+      <li>
+        <form th:action="@{/logout}" method="post">
+          <button type="submit" class="menu-item">ログアウト</button>
+        </form>
+      </li>
+    </ul>
+  </nav>
+  <script th:src="@{/js/common/sideMenu.js}"></script>
 </th:block>
 </body>
