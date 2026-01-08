@@ -67,7 +67,27 @@ body, html {
   padding: 0;
 }
 
-@scope .sidebar-menu {
+.sidebar-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--secondary-foreground);
+  text-decoration: none;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.sidebar-menu button.menu-item {
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+@scope() .sidebar-menu {
   li {
     margin-bottom: 10px;
   }
@@ -101,9 +121,22 @@ body, html {
   transition: background-color 0.2s;
 }
 
-.sidebar-menu a:hover, .sidebar-menu .active a {
+.sidebar-menu .menu-item:hover,
+.sidebar-menu .active .menu-item {
   background-color: var(--accent);
   color: var(--accent-foreground);
+}
+
+.sidebar-menu .menu-item.task::before {
+  content: '';
+  display: block;
+  width: 20px;
+  height: 20px;
+  background-color: var(--foreground);
+  mask-image: url('../icon/tasks.svg');
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  mask-position: center;
 }
 
 .sidebar-menu i {
@@ -588,4 +621,18 @@ body, html {
 .sort-icon {
   margin-left: 4px;
   font-size: 12px;
+}
+
+.link-like {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #0d6efd;        /* aタグっぽい色 */
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-like:hover {
+  color: #0a58ca;
+  text-decoration: underline;
 }

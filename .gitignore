@@ -2,3 +2,5 @@
 target
 generated
 generated_tests
+.gradle
+build
